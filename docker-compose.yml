@@ -1,0 +1,78 @@
+version: "3.8"
+services:
+  traefik:
+    image: traefik:latest
+    command:
+      # - --log.level=DEBUG
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=englab
+      - --entrypoints.web.address=:80
+      - --log.level=DEBUG
+      - --log.format=json
+      - --metrics.prometheus=true
+    ports:
+      - 80:80
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.traefik.rule=Host(`traefik.localhost`)
+      - traefik.http.routers.traefik.entrypoints=web
+      - traefik.http.services.traefik.loadbalancer.server.port=8080
+
+  statping:
+    image: adamboutcher/statping-ng:dev
+    volumes:
+      - statping-data:/app
+    environment:
+      DB_CONN: sqlite
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.statping.rule=Host(`statping.localhost`)
+
+  caddy:
+    image: caddy:latest
+    restart: unless-stopped
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy/site:/srv
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.caddy.rule=Host(`caddy.localhost`)
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    expose:
+      - 9090
+    networks:
+      - monitoring  
+
+  whoami:
+    # A container that exposes an API to show its IP address
+    image: traefik/whoami
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.whoami.rule=Host(`whoami.localhost`)
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  statping-data:
+
